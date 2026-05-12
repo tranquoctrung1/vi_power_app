@@ -28,6 +28,12 @@ android/key.properties
 macos/Flutter/GeneratedPluginRegistrant.swift
 macos/Flutter/ephemeral/
 
+# IDE
+.idea/
+
+# Claude Code
+.claude/
+
 # Misc
 *.log
 .DS_Store
