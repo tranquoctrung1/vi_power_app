@@ -13,7 +13,7 @@ import 'firebase_options.dart';
 
 final _proxyCache = <String, (List<int>, Map<String, String>)>{};
 
-final _staticExt = RegExp(r'\.(js|css|woff2?|ttf|otf|png|jpg|jpeg|gif|svg|ico|webp)(\?|$)');
+final _staticExt = RegExp(r'\.(html|js|css|woff2?|ttf|otf|png|jpg|jpeg|gif|svg|ico|webp|json)(\?|$)');
 
 Handler _cachedProxy(String target) {
   final proxy = proxyHandler(target);
@@ -170,11 +170,10 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   Future<void> _initApp() async {
-    await _requestCameraPermission();
-    if (!mounted || _permissionDenied) return;
     final url = 'http://127.0.0.1:${widget.proxyServer.port}$_targetPath';
     debugPrint('WebView load: $url');
     _buildController(url);
+    await _requestCameraPermission();
   }
 
   Future<bool> _isSimulator() async {
