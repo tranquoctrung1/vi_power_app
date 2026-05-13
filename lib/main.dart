@@ -160,6 +160,7 @@ class _WebViewPageState extends State<WebViewPage> {
   bool _isLoading = true;
   bool _hasError = false;
   bool _permissionDenied = false;
+  bool _initialLoadComplete = false;
 
   static const _targetPath = '/mobile/index.html?src=app';
 
@@ -204,9 +205,12 @@ class _WebViewPageState extends State<WebViewPage> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (_) {
-            if (mounted) setState(() { _isLoading = true; _hasError = false; });
+            if (!_initialLoadComplete && mounted) {
+              setState(() { _isLoading = true; _hasError = false; });
+            }
           },
           onPageFinished: (_) {
+            _initialLoadComplete = true;
             if (mounted) setState(() => _isLoading = false);
           },
           onWebResourceError: (error) {
@@ -241,6 +245,7 @@ class _WebViewPageState extends State<WebViewPage> {
 
   Future<void> _reload() async {
     if (_controller == null) return;
+    _initialLoadComplete = false;
     setState(() { _isLoading = true; _hasError = false; });
     await _controller!.reload();
   }
