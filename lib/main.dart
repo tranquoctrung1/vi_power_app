@@ -166,7 +166,12 @@ class _WebViewPageState extends State<WebViewPage> {
   @override
   void initState() {
     super.initState();
-    _requestCameraPermission();
+    _initApp();
+  }
+
+  Future<void> _initApp() async {
+    await _requestCameraPermission();
+    if (!mounted || _permissionDenied) return;
     final url = 'http://127.0.0.1:${widget.proxyServer.port}$_targetPath';
     debugPrint('WebView load: $url');
     _buildController(url);
@@ -180,8 +185,15 @@ class _WebViewPageState extends State<WebViewPage> {
 
   Future<void> _requestCameraPermission() async {
     if (await _isSimulator()) return;
-    final status = await Permission.camera.request();
-    if (status.isPermanentlyDenied && mounted) {
+
+    var status = await Permission.camera.status;
+
+    // notDetermined on iOS maps to isDenied — calling .request() shows native dialog
+    if (status.isDenied) {
+      status = await Permission.camera.request();
+    }
+
+    if ((status.isPermanentlyDenied || status.isRestricted) && mounted) {
       setState(() => _permissionDenied = true);
     }
   }
@@ -190,6 +202,10 @@ class _WebViewPageState extends State<WebViewPage> {
     final controller = WebViewController()
       ..setBackgroundColor(Colors.white)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setOnPlatformPermissionRequest((request) {
+        debugPrint('WebView permission request: ${request.types}');
+        request.grant();
+      })
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (_) {
@@ -210,14 +226,6 @@ class _WebViewPageState extends State<WebViewPage> {
         ),
       )
       ..loadRequest(Uri.parse(url));
-
-    final platform = controller.platform;
-    if (platform is AndroidWebViewController) {
-      platform.setOnPlatformPermissionRequest((request) {
-        debugPrint('WebView permission request: ${request.types}');
-        request.grant();
-      });
-    }
 
     if (mounted) setState(() => _controller = controller);
   }

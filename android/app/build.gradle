@@ -21,7 +21,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.webview_push_app"
+        applicationId "com.bavitech.vipower"
         minSdkVersion flutter.minSdkVersion
         targetSdk flutter.targetSdkVersion
         versionCode flutter.versionCode
