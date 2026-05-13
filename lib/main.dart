@@ -202,10 +202,6 @@ class _WebViewPageState extends State<WebViewPage> {
     final controller = WebViewController()
       ..setBackgroundColor(Colors.white)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setOnPlatformPermissionRequest((request) {
-        debugPrint('WebView permission request: ${request.types}');
-        request.grant();
-      })
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (_) {
@@ -226,6 +222,14 @@ class _WebViewPageState extends State<WebViewPage> {
         ),
       )
       ..loadRequest(Uri.parse(url));
+
+    final platform = controller.platform;
+    if (platform is AndroidWebViewController) {
+      platform.setOnPlatformPermissionRequest((request) {
+        debugPrint('WebView permission request: ${request.types}');
+        request.grant();
+      });
+    }
 
     if (mounted) setState(() => _controller = controller);
   }
