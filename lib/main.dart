@@ -186,14 +186,8 @@ class _WebViewPageState extends State<WebViewPage> {
   Future<void> _requestCameraPermission() async {
     if (await _isSimulator()) return;
 
-    var status = await Permission.camera.status;
-
-    // notDetermined on iOS maps to isDenied — calling .request() shows native dialog
-    if (status.isDenied) {
-      status = await Permission.camera.request();
-    }
-
-    if ((status.isPermanentlyDenied || status.isRestricted) && mounted) {
+    final status = await Permission.camera.status;
+    if (!status.isGranted && mounted) {
       setState(() => _permissionDenied = true);
     }
   }
@@ -252,34 +246,6 @@ class _WebViewPageState extends State<WebViewPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_permissionDenied) {
-      return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.camera_alt, size: 64, color: Colors.grey),
-                const SizedBox(height: 16),
-                const Text(
-                  'Ứng dụng cần quyền truy cập Camera',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton.icon(
-                  onPressed: openAppSettings,
-                  icon: const Icon(Icons.settings),
-                  label: const Text('Mở Cài đặt'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
       body: SafeArea(
         child: Stack(
@@ -308,6 +274,50 @@ class _WebViewPageState extends State<WebViewPage> {
               ),
             if (_isLoading && !_hasError)
               _LoadingOverlay(),
+            if (_permissionDenied)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Material(
+                  color: Colors.black87,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.no_photography,
+                          color: Colors.white70,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Tính năng camera không khả dụng vì chưa cấp quyền.',
+                            style: TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: openAppSettings,
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.amber,
+                            padding: EdgeInsets.zero,
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: const Text(
+                            'Cài đặt',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
