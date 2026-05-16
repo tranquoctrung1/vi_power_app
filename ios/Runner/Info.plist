@@ -53,10 +53,10 @@
         <true/>
     </dict>
     <key>NSCameraUsageDescription</key>
-    <string>Camera is used to scan QR codes to get the device id to show data history of this device in the report screen</string>
+    <string>Vi Power uses your camera to scan QR codes, allowing you to quickly access links, product information, and other content</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Ứng dụng cần quyền truy cập microphone</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>Photos is used to scan image QR codes to get the device id to show data history of this device in the report screen</string>
+    <string>Vi Power uses your photo library to scan QR codes, allowing you to quickly access links, product information, and other content</string>
 </dict>
 </plist>
