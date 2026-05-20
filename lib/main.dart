@@ -1,65 +1,27 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:shelf/shelf.dart';
-import 'package:shelf/shelf_io.dart' as shelf_io;
-import 'package:shelf_proxy/shelf_proxy.dart';
 import 'notification_service.dart';
 import 'firebase_options.dart';
-
-final _proxyCache = <String, (List<int>, Map<String, String>)>{};
-final _staticExt = RegExp(
-  r'\.(html|js|css|woff2?|ttf|otf|png|jpg|jpeg|gif|svg|ico|webp|json)(\?|$)',
-);
-
-Handler _cachedProxy(String target) {
-  final proxy = proxyHandler(target);
-  return (Request req) async {
-    if (req.method != 'GET') return proxy(req);
-    final key = req.requestedUri.toString();
-    final isStatic = _staticExt.hasMatch(key);
-    if (isStatic && _proxyCache.containsKey(key)) {
-      final (bytes, headers) = _proxyCache[key]!;
-      return Response.ok(bytes, headers: headers);
-    }
-    final res = await proxy(req);
-    if (isStatic && res.statusCode == 200) {
-      final bytes = await res.read().expand((b) => b).toList();
-      _proxyCache[key] = (bytes, Map.from(res.headers));
-      return Response.ok(bytes, headers: res.headers);
-    }
-    return res;
-  };
-}
-
-Future<HttpServer> _startProxy() {
-  return shelf_io.serve(
-    _cachedProxy('http://157.66.81.22:3007'),
-    InternetAddress.loopbackIPv4,
-    0,
-  );
-}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (Platform.isAndroid) {
     await AndroidWebViewController.enableDebugging(false);
   }
-  // Firebase init in background — không block startup
   Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)
       .then((_) => NotificationService.instance.initialize());
-  // Proxy start nhanh (~50ms) — chỉ await cái này
-  final proxyServer = await _startProxy();
-  runApp(MyApp(proxyServer: proxyServer));
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key, required this.proxyServer});
-  final HttpServer proxyServer;
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +32,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: WebViewPage(proxyServer: proxyServer),
+      home: const WebViewPage(),
     );
   }
 }
@@ -144,9 +106,61 @@ class _LoadingOverlayState extends State<_LoadingOverlay>
   }
 }
 
+class _NativeQRScanner extends StatefulWidget {
+  const _NativeQRScanner({required this.onDetect, required this.onClose});
+  final void Function(String) onDetect;
+  final VoidCallback onClose;
+
+  @override
+  State<_NativeQRScanner> createState() => _NativeQRScannerState();
+}
+
+class _NativeQRScannerState extends State<_NativeQRScanner> {
+  bool _detected = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black,
+      child: Stack(
+        children: [
+          MobileScanner(
+            onDetect: (capture) {
+              if (_detected) return;
+              final value = capture.barcodes.isEmpty ? null : capture.barcodes.first.rawValue;
+              if (value != null && value.isNotEmpty) {
+                _detected = true;
+                widget.onDetect(value);
+              }
+            },
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 32),
+                onPressed: widget.onClose,
+              ),
+            ),
+          ),
+          const Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 80),
+              child: Text(
+                'Đưa camera vào mã QR để quét',
+                style: TextStyle(color: Colors.white, fontSize: 16),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class WebViewPage extends StatefulWidget {
-  const WebViewPage({super.key, required this.proxyServer});
-  final HttpServer proxyServer;
+  const WebViewPage({super.key});
 
   @override
   State<WebViewPage> createState() => _WebViewPageState();
@@ -157,19 +171,26 @@ class _WebViewPageState extends State<WebViewPage> {
   bool _isLoading = true;
   bool _hasError = false;
   bool _initialLoadComplete = false;
+  bool _showQRScanner = false;
 
-  static const _targetPath = '/mobile/index.html?src=app';
+  static const _targetUrl = 'http://157.66.81.22:3006/';
 
   @override
   void initState() {
     super.initState();
-    _initApp();
+    _buildController(_targetUrl);
+    if (Platform.isAndroid) {
+      _requestCameraPermission();
+    }
   }
 
-  Future<void> _initApp() async {
-    final url = 'http://127.0.0.1:${widget.proxyServer.port}$_targetPath';
-    debugPrint('WebView load: $url');
-    _buildController(url);
+  Future<void> _requestCameraPermission() async {
+    final status = await Permission.camera.status;
+    if (status.isDenied) {
+      await Permission.camera.request();
+    } else if (status.isPermanentlyDenied && mounted) {
+      _showCameraPermissionDialog();
+    }
   }
 
   Future<bool> _isSimulator() async {
@@ -178,8 +199,6 @@ class _WebViewPageState extends State<WebViewPage> {
     return !info.isPhysicalDevice;
   }
 
-  /// Hiện dialog khi user chủ động dùng tính năng QR nhưng chưa cấp quyền camera.
-  /// Chỉ được gọi qua JavaScript channel — không tự động xuất hiện.
   void _showCameraPermissionDialog() {
     if (!mounted) return;
     showDialog(
@@ -198,7 +217,7 @@ class _WebViewPageState extends State<WebViewPage> {
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              openAppSettings(); // user chủ động bấm — đúng guideline Apple
+              openAppSettings();
             },
             child: const Text('Open Settings'),
           ),
@@ -207,24 +226,91 @@ class _WebViewPageState extends State<WebViewPage> {
     );
   }
 
+  Future<void> _handleQRResult(String code) async {
+    if (!mounted) return;
+    setState(() => _showQRScanner = false);
+
+    final jsonCode = jsonEncode(code);
+    await _controller?.runJavaScript('''
+      (function(code) {
+        if (typeof window.receiveQRCode === 'function') { window.receiveQRCode(code); return; }
+        if (typeof window.onQRScan === 'function') { window.onQRScan(code); return; }
+        if (typeof window.handleQRResult === 'function') { window.handleQRResult(code); return; }
+        var inputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type])'))
+          .filter(function(el) { return el.offsetParent !== null; });
+        if (inputs.length > 0) {
+          var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+          setter.call(inputs[0], code);
+          inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+          inputs[0].dispatchEvent(new Event('change', { bubbles: true }));
+          inputs[0].focus();
+        }
+      })($jsonCode);
+    ''');
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã quét: $code'),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'OK',
+            onPressed: () =>
+                ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _injectCameraInterceptor() async {
+    await _controller?.runJavaScript('''
+      (function() {
+        function notifyFlutter() {
+          if (window.FlutterCamera) {
+            window.FlutterCamera.postMessage('permission_denied');
+          }
+        }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          try {
+            Object.defineProperty(navigator, 'mediaDevices', {
+              value: {
+                getUserMedia: function(constraints) {
+                  if (constraints && constraints.video) notifyFlutter();
+                  return Promise.reject(new DOMException('Not allowed', 'NotAllowedError'));
+                },
+                enumerateDevices: function() { return Promise.resolve([]); }
+              },
+              writable: true,
+              configurable: true
+            });
+          } catch(e) {}
+        } else {
+          var orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+          navigator.mediaDevices.getUserMedia = function(constraints) {
+            if (constraints && constraints.video) {
+              return orig(constraints).catch(function(e) {
+                notifyFlutter();
+                throw e;
+              });
+            }
+            return orig(constraints);
+          };
+        }
+      })();
+    ''');
+  }
+
   void _buildController(String url) {
     final controller = WebViewController()
       ..setBackgroundColor(Colors.white)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-    // JavaScript channel: web page gọi FlutterCamera.postMessage('permission_denied')
-    // khi user cố dùng QR mà camera bị từ chối
       ..addJavaScriptChannel(
         'FlutterCamera',
         onMessageReceived: (JavaScriptMessage msg) async {
-          if (msg.message == 'permission_denied') {
-            // Kiểm tra thêm trên native trước khi hiện dialog
-            if (!await _isSimulator()) {
-              final status = await Permission.camera.status;
-              if (!status.isGranted) {
-                _showCameraPermissionDialog();
-              }
-            }
-          }
+          debugPrint('FlutterCamera message: ${msg.message}');
+          // Both platforms: getUserMedia blocked on HTTP → use native QR scanner
+          if (mounted) setState(() => _showQRScanner = true);
         },
       )
       ..setNavigationDelegate(
@@ -240,6 +326,7 @@ class _WebViewPageState extends State<WebViewPage> {
           onPageFinished: (_) {
             _initialLoadComplete = true;
             if (mounted) setState(() => _isLoading = false);
+            _injectCameraInterceptor();
           },
           onWebResourceError: (error) {
             debugPrint(
@@ -259,19 +346,20 @@ class _WebViewPageState extends State<WebViewPage> {
 
     final platform = controller.platform;
     if (platform is AndroidWebViewController) {
-      platform.setOnPlatformPermissionRequest((request) {
-        debugPrint('WebView permission request: ${request.types}');
-        request.grant();
+      platform.setOnPlatformPermissionRequest((request) async {
+        debugPrint('WebView perm request: ${request.types.map((t) => t.name).toList()}');
+        final needsCamera = request.types
+            .any((t) => t == WebViewPermissionResourceType.camera);
+        if (needsCamera) {
+          final status = await Permission.camera.status;
+          status.isGranted ? request.grant() : request.deny();
+        } else {
+          request.grant();
+        }
       });
     }
 
     if (mounted) setState(() => _controller = controller);
-  }
-
-  @override
-  void dispose() {
-    widget.proxyServer.close(force: true);
-    super.dispose();
   }
 
   Future<void> _reload() async {
@@ -313,6 +401,13 @@ class _WebViewPageState extends State<WebViewPage> {
                 ),
               ),
             if (_isLoading && !_hasError) _LoadingOverlay(),
+            if (_showQRScanner)
+              Positioned.fill(
+                child: _NativeQRScanner(
+                  onDetect: _handleQRResult,
+                  onClose: () => setState(() => _showQRScanner = false),
+                ),
+              ),
           ],
         ),
       ),

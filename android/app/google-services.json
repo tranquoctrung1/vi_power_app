@@ -7,6 +7,25 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:719530414069:android:0b0167047060bf26ec1abc",
+        "android_client_info": {
+          "package_name": "com.bavitech.vipower"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHYv_8sMUzh7ZjSJZsz7luAy47OH1XG8o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:719530414069:android:1348790ffdf4ae2aec1abc",
         "android_client_info": {
           "package_name": "com.example.webview_push_app"
